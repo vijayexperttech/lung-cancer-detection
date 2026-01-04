@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lung Cancer Detection AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+
+    <header>
+        <div class="container">
+            <h1>Lung Cancer Detection AI </h1>
+            <p>Class 12 Capstone Project | Advanced Diagnostic Assistant</p>
+            <p>Gyanfort Innovative School, Farrukhabad UP</p>
+        </div>
+    </header>
+
+    <main class="container">
+
+        <!-- Upload Section -->
+        <section id="upload-section" class="card">
+            <h2>Upload CT Scan</h2>
+            <p>Select a CT scan image to analyze for potential abnormalities.</p>
+
+            <div class="upload-area" id="drop-zone">
+                <input type="file" id="file-input" accept="image/*" hidden>
+                <div class="upload-content">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    <p>Drag & Drop or <span>Click to Upload</span></p>
+                    <p class="sub-text">Supported formats: JPG, PNG, JPEG</p>
+                </div>
+            </div>
+
+            <div id="preview-container" class="hidden">
+                <img id="image-preview" src="" alt="Preview">
+                <button id="analyze-btn" class="btn-primary">Analyze Image</button>
+                <button id="reset-btn" class="btn-secondary">Reset</button>
+            </div>
+        </section>
+
+        <!-- Loading Spinner -->
+        <div id="loading" class="hidden">
+            <div class="spinner"></div>
+            <p>Analyzing image with CNN Model...</p>
+        </div>
+
+        <!-- Results Section -->
+        <section id="results-section" class="hidden">
+
+            <div class="diagnosis-card card">
+                <h3>Diagnosis Result</h3>
+                <div id="diagnosis-badge" class="badge"></div>
+                <div class="metrics">
+                    <div class="metric">
+                        <span class="label">Accuracy</span>
+                        <span class="value" id="accuracy-val">--</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">Precision</span>
+                        <span class="value" id="precision-val">--</span>
+                    </div>
+                </div>
+                <p id="detection-details" class="details-text"></p>
+            </div>
+
+            <div class="action-plans">
+                <div class="plan-card card patient">
+                    <h3>Action Plan for Patient</h3>
+                    <ul id="patient-plan-list"></ul>
+                </div>
+
+                <div class="plan-card card doctor">
+                    <h3>Action Plan for Doctor</h3>
+                    <ul id="doctor-plan-list"></ul>
+                </div>
+            </div>
+
+            <button id="new-scan-btn" class="btn-primary full-width">Analyze Another Scan</button>
+        </section>
+
+    </main>
+
+    <footer>
+        <p style="text-align: center;">&copy; 2025-26 Lung Cancer Detection Project. All Rights Reserved.</p>
+    </footer>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const previewContainer = document.getElementById('preview-container');
+        const imagePreview = document.getElementById('image-preview');
+        const analyzeBtn = document.getElementById('analyze-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const uploadSection = document.getElementById('upload-section');
+        const loading = document.getElementById('loading');
+        const resultsSection = document.getElementById('results-section');
+        const newScanBtn = document.getElementById('new-scan-btn');
+
+        // Drag & Drop
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+
+        function handleFile(file) {
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    imagePreview.src = e.target.result;
+                    dropZone.classList.add('hidden');
+                    previewContainer.classList.remove('hidden');
+                };
+                reader.readAsDataURL(file);
+                fileInput.file = file; // Store for upload
+            } else {
+                alert('Please upload a valid image file.');
+            }
+        }
+
+        resetBtn.addEventListener('click', () => {
+            fileInput.value = '';
+            imagePreview.src = '';
+            dropZone.classList.remove('hidden');
+            previewContainer.classList.add('hidden');
+        });
+
+        newScanBtn.addEventListener('click', () => {
+            resultsSection.classList.add('hidden');
+            uploadSection.classList.remove('hidden');
+            resetBtn.click();
+        });
+
+        analyzeBtn.addEventListener('click', async () => {
+            const file = fileInput.files[0] || fileInput.file;
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // UI Transition
+            uploadSection.classList.add('hidden');
+            loading.classList.remove('hidden');
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayResults(data);
+                } else {
+                    alert(data.error || 'An error occurred.');
+                    loading.classList.add('hidden');
+                    uploadSection.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to connect to the server.');
+                loading.classList.add('hidden');
+                uploadSection.classList.remove('hidden');
+            }
+        });
+
+        function displayResults(data) {
+            loading.classList.add('hidden');
+            resultsSection.classList.remove('hidden');
+
+            // Diagnosis
+            const badge = document.getElementById('diagnosis-badge');
+            badge.textContent = data.diagnosis;
+            badge.className = 'badge ' + data.diagnosis.toLowerCase().replace('-', '');
+
+            // Metrics
+            document.getElementById('accuracy-val').textContent = data.accuracy;
+            document.getElementById('precision-val').textContent = data.precision;
+            document.getElementById('detection-details').textContent = data.detection_details;
+
+            // Lists
+            const patientList = document.getElementById('patient-plan-list');
+            patientList.innerHTML = data.patient_plan.map(item => `<li>${item}</li>`).join('');
+
+            const doctorList = document.getElementById('doctor-plan-list');
+            doctorList.innerHTML = data.doctor_plan.map(item => `<li>${item}</li>`).join('');
+        }
+    </script>
+</body>
+
+</html>
